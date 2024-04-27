@@ -1,0 +1,326 @@
+import numpy as np
+import pandas as pd
+
+# Загрузка данных из файлов
+elevation = np.load('/content/elevation.npy')
+temperature = np.load('/content/temperature.npy')
+pressure = np.load('/content/pressure.npy')
+humidity = np.load('/content/humidity.npy')
+wind_speed = np.load('/content/wind_speed.npy')
+wind_dir = np.load('/content/wind_dir.npy')
+cloud_cover = np.load('/content/cloud_cover.npy')
+
+# Разворачивание elevation для каждого часа измерений
+elevation_expanded = np.repeat(elevation[np.newaxis, :, :], temperature.shape[0], axis=0)
+
+# Создание DataFrame из данных
+data = {
+    'elevation': elevation_expanded.flatten(),
+    'temperature': temperature.flatten(),
+    'pressure': pressure.flatten(),
+    'humidity': humidity.flatten(),
+    'wind_speed': wind_speed.flatten(),
+    'wind_dir': wind_dir.flatten(),
+    'cloud_cover': cloud_cover.flatten()
+}
+df = pd.DataFrame(data)
+
+# Проверка пропущенных значений и замена пропущенных значений средними
+print(df.isnull().sum())
+df.fillna(df.mean(), inplace=True)
+
+# Продолжение работы с данными, например, обучение моделей и предсказание
+from sklearn.model_selection import train_test_split
+
+# Разделение данных на обучающую и тестовую выборки
+X = df.drop(columns=['temperature'])  # Используем все параметры кроме температуры как признаки
+y = df['temperature']  # Температура - целевая переменная
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+print("Размеры обучающей выборки:")
+print(X_train.shape, y_train.shape)
+
+print("\nРазмеры тестовой выборки:")
+print(X_test.shape, y_test.shape)
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.metrics import mean_absolute_error
+import matplotlib.pyplot as plt
+
+# Преобразование данных для LSTM
+X_train_lstm = X_train.values.reshape((X_train.shape[0], X_train.shape[1], 1))
+X_test_lstm = X_test.values.reshape((X_test.shape[0], X_test.shape[1], 1))
+
+# Создание и обучение модели LSTM
+lstm_model = Sequential([
+    LSTM(units=50, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
+    Dense(units=1)
+])
+lstm_model.compile(optimizer='adam', loss='mean_squared_error')
+history = lstm_model.fit(X_train_lstm, y_train, epochs=100, batch_size=32, validation_split=0.2, verbose=1)
+
+# Предсказание на тестовых данных
+lstm_predictions = lstm_model.predict(X_test_lstm)
+
+# Оценка качества модели на тестовой выборке
+mae_lstm = mean_absolute_error(y_test, lstm_predictions)
+print(f"Средняя абсолютная ошибка модели LSTM: {mae_lstm}")
+
+# Визуализация процесса обучения модели LSTM
+plt.plot(history.history['loss'], label='train_loss')
+plt.plot(history.history['val_loss'], label='val_loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+import pandas as pd
+import numpy as np
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_absolute_error
+
+# Создаем временной индекс для тестовой выборки
+dates_test = pd.date_range(start='2024-01-01', periods=len(X_test), freq='H')
+
+# Создаем ARIMA модель с лучшими параметрами, полученными из обучения
+arima_model = ARIMA(y_train, order=(5, 1, 0))
+arima_model_fit = arima_model.fit()
+
+# Прогнозирование на тестовых данных с помощью модели ARIMA
+arima_predictions = arima_model_fit.forecast(steps=len(X_test))
+
+# Оценка качества модели ARIMA на тестовой выборке
+mae_arima = mean_absolute_error(y_test, arima_predictions)
+print(f"Средняя абсолютная ошибка модели ARIMA: {mae_arima}")
+
+# Пример улучшения модели LSTM
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+
+# Новая архитектура LSTM модели
+model = Sequential([
+    LSTM(units=100, input_shape=(X_train.shape[1], 1), return_sequences=True),
+    Dropout(0.2),
+    LSTM(units=50),
+    Dense(units=1)
+])
+
+# Компиляция и обучение модели
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.fit(X_train_lstm, y_train, epochs=100, batch_size=32)
+
+# Пример использования модели RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor
+
+# Создание и обучение модели
+rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_model.fit(X_train, y_train)
+
+# Оценка качества модели
+rf_predictions = rf_model.predict(X_test)
+rf_mape = mean_absolute_percentage_error(y_test, rf_predictions)
+print("MAPE RandomForestRegressor:", rf_mape)
+
+# Пример исследования корреляции между признаками
+correlation_matrix = df.corr()
+print(correlation_matrix)
+
+# Визуализация матрицы корреляции
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f")
+plt.title("Correlation Matrix")
+plt.show()
+
+
+# Пример использования GridSearchCV для подбора параметров модели
+from sklearn.model_selection import GridSearchCV
+
+# Задание сетки параметров для подбора
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10]
+}
+
+# Создание модели для подбора параметров
+rf_grid_model = RandomForestRegressor(random_state=42)
+grid_search = GridSearchCV(estimator=rf_grid_model, param_grid=param_grid, cv=3)
+grid_search.fit(X_train, y_train)
+
+# Лучшие параметры и оценка качества
+best_params = grid_search.best_params_
+best_model = grid_search.best_estimator_
+
+# Пример создания отчета с использованием библиотеки ReportLab
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+def create_report(file_name, results_dict):
+    # Создание PDF файла
+    c = canvas.Canvas(file_name, pagesize=letter)
+
+    # Запись результатов в отчет
+    c.drawString(100, 700, "Результаты анализа:")
+    y_pos = 680
+    for key, value in results_dict.items():
+        c.drawString(100, y_pos, f"{key}: {value}")
+        y_pos -= 20
+
+    c.save()
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
+
+# Определение функции для вычисления средней абсолютной процентной ошибки (MAPE)
+def mean_absolute_percentage_error(y_true, y_pred):
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
+# Загрузка данных из файлов или другого источника
+# Например:
+# df = pd.read_csv('data.csv')
+
+# Разделение данных на обучающую и тестовую выборки
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Создание и обучение модели RandomForestRegressor
+rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_model.fit(X_train, y_train)
+
+# Прогнозирование на тестовой выборке
+rf_predictions = rf_model.predict(X_test)
+
+# Оценка качества модели с помощью средней абсолютной ошибки (MAE)
+mae_rf = mean_absolute_error(y_test, rf_predictions)
+print("MAE RandomForestRegressor:", mae_rf)
+
+# Оценка качества модели с помощью средней абсолютной процентной ошибки (MAPE)
+mape_rf = mean_absolute_percentage_error(y_test, rf_predictions)
+print("MAPE RandomForestRegressor:", mape_rf)
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Предварительная загрузка данных
+# Допустим, что df - это ваш DataFrame с данными
+
+# Отображение информации о данных
+print(df.info())
+
+# Статистический обзор данных
+print(df.describe())
+
+# Визуализация корреляции между признаками
+corr_matrix = df.corr()
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f")
+plt.title('Correlation Matrix')
+plt.show()
+
+# Построение графиков распределения для каждого признака
+for column in df.columns:
+    plt.figure(figsize=(8, 6))
+    sns.histplot(df[column], kde=True)
+    plt.title(f'Distribution of {column}')
+    plt.xlabel(column)
+    plt.ylabel('Count')
+    plt.show()
+
+# Анализ временных рядов (если применимо)
+# Допустим, что у вас есть столбец с датой/временем, назовем его 'timestamp'
+if 'timestamp' in df.columns:
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df.set_index('timestamp', inplace=True)
+    plt.figure(figsize=(12, 8))
+    df['temperature'].plot()
+    plt.title('Temperature Time Series')
+    plt.xlabel('Timestamp')
+    plt.ylabel('Temperature')
+    plt.show()
+
+
+# Код для предсказания погодных параметров на следующие 5 часов
+# Предположим, что есть модель, названная model, которая может делать прогнозы на 5 часов вперед
+# model.predict(X_test) - это функция, которая возвращает предсказания для тестовых данных X_test
+
+# Пример предсказания для наглядности
+# Преобразуем предсказания в формат .csv для сохранения
+
+# Создаем идентификаторы для каждой точки данных в формате "hourY_Y_X", где Y и X - координаты точки
+def create_ids():
+    ids = []
+    for hour in range(1, 6):  # 5 часов
+        for y in range(1, 31):  # 30 координат по оси Y
+            for x in range(1, 31):  # 30 координат по оси X
+                ids.append(f"hour{hour}_y{y}_x{x}")
+    return ids
+
+# Генерируем идентификаторы
+ids = create_ids()
+
+# Пример предсказаний (замените на ваши реальные предсказания)
+temperature_predictions = np.random.uniform(low=-10, high=30, size=len(ids))
+pressure_predictions = np.random.uniform(low=980, high=1040, size=len(ids))
+humidity_predictions = np.random.uniform(low=0, high=100, size=len(ids))
+wind_speed_predictions = np.random.uniform(low=0, high=20, size=len(ids))
+wind_dir_predictions = np.random.randint(low=0, high=360, size=len(ids))
+cloud_cover_predictions = np.random.uniform(low=0, high=100, size=len(ids))
+
+# Создаем DataFrame с предсказаниями
+solution = pd.DataFrame({
+    "ID": ids,
+    "temperature": temperature_predictions,
+    "pressure": pressure_predictions,
+    "humidity": humidity_predictions,
+    "wind_speed": wind_speed_predictions,
+    "wind_dir": wind_dir_predictions,
+    "cloud_cover": cloud_cover_predictions
+})
+
+# Сохраняем DataFrame в .csv файл
+solution.to_csv("solution.csv", index=False)
+
+import pandas as pd
+import numpy as np
+
+# Создаем данные для ответа (пример с рандомными значениями)
+np.random.seed(42)  # Для воспроизводимости случайных данных
+num_rows = 4500  # Общее количество строк в ответе
+num_hours = 5
+num_points = 30
+
+# Генерируем случайные данные для ответа
+hour_range = np.repeat(np.arange(1, num_hours + 1), num_points * num_points)
+y_range = np.tile(np.repeat(np.arange(1, num_points + 1), num_points), num_hours)
+x_range = np.tile(np.tile(np.arange(1, num_points + 1), num_points), num_hours)
+ids = [f'hour{hour}_y{y}_x{x}' for hour, y, x in zip(hour_range, y_range, x_range)]
+temperatures = np.random.rand(num_rows) * 100  # Пример случайных температур
+pressures = np.random.rand(num_rows) * 1000  # Пример случайных давлений
+humidities = np.random.rand(num_rows) * 100  # Пример случайных влажностей
+wind_speeds = np.random.rand(num_rows) * 50  # Пример случайных скоростей ветра
+wind_dirs = np.random.rand(num_rows) * 360  # Пример случайных направлений ветра
+cloud_covers = np.random.rand(num_rows) * 100  # Пример случайных облачностей
+
+# Создаем DataFrame для сохранения ответа
+data = {
+    'ID': ids,
+    'temperature': temperatures,
+    'pressure': pressures,
+    'humidity': humidities,
+    'wind_speed': wind_speeds,
+    'wind_dir': wind_dirs,
+    'cloud_cover': cloud_covers
+}
+df_solution = pd.DataFrame(data)
+
+# Сохраняем DataFrame в CSV файл
+df_solution.to_csv("solution.csv", index=False)
